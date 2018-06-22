@@ -18,5 +18,6 @@ libraryDependencies ++= Seq(
   "org.tpolecat" %% "doobie-hikari"    % "0.5.3", // HikariCP transactor.
   "org.tpolecat" %% "doobie-postgres"  % "0.5.3", // Postgres driver 42.2.2 + type mappings.
   "org.tpolecat" %% "doobie-specs2"    % "0.5.3", // Specs2 support for typechecking statements.
-  "org.tpolecat" %% "doobie-scalatest" % "0.5.3"  // ScalaTest support for typechecking statements.
+  "org.tpolecat" %% "doobie-scalatest" % "0.5.3", // ScalaTest support for typechecking statements.
+  "com.sksamuel.scrimage" % "scrimage-core_2.11" % "2.1.8"
 )
