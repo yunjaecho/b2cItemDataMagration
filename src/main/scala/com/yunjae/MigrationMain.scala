@@ -2,21 +2,20 @@ package com.yunjae
 
 import java.awt.image.BufferedImage
 import java.io._
-import java.net.{HttpURLConnection, URL}
-
+import java.net.URL
 import cats.implicits._
 import cats.effect.IO
 import com.sksamuel.scrimage.Image
-import com.sksamuel.scrimage.ScaleMethod.FastScale
-import com.sksamuel.scrimage.nio.JpegWriter
 import javax.imageio.ImageIO
-//import fs2.Stream
 import doobie._
 import doobie.implicits._
 
+import sys.process._
 import scala.io.Source
 
 case class B2CItem(containerId: String, itemCd: Int, condDelv: Option[Int], condTax: Option[Int], content: Option[String], imageAddr0: Option[String], imageAddr1: Option[String], imageAddr2: Option[String], imageAddr3: Option[String] )
+
+case class B2CItemCert(itemCd: Int, ptnNo: Int, stdCertNo: String, certStatusCd: String, certGbNm: Option[String], certStartDt: Option[String], stdCertImgPath: Option[String], repItemNm: Option[String])
 
 /**
   * TB_CONTENT_FILE  등록된 테이블 중에 FILE_DESCRIPTION, SAVED_PATH 정보
@@ -31,7 +30,7 @@ object DataBase {
   )
 
   val posamllDb = Transactor.fromDriverManager[IO](
-    "com.tmax.tibero.jdbc.TbDriver", "jdbc:tibero:thin:@192.168.100.128:8629:tibero", "ATEAT", "atqwaszx12"
+    "com.tmax.tibero.jdbc.TbDriver", "jdbc:tibero:thin:@192.168.100.136:8629:tibero", "ATEAT", "atqwaszx12"
   )
 
   val posamllStats = Transactor.fromDriverManager[IO](
@@ -75,6 +74,61 @@ object MigrationMain {
       .unsafeRunSync
   }
 
+  /**
+    * B2C 상품인증 정보 가져오기
+    * @return
+    */
+  def selectB2CItemCert = {
+    sql"""
+         |  SELECT
+         |        T_A.상품코드   AS ITEM_CD,
+         |        T_B.출하자코드 AS PTN_NO,
+         |        T_B.인증번호   AS STD_CERT_NO,
+         |        (CASE
+         |             WHEN T_B.인증상태 = '6' THEN 'CRT01'
+         |             WHEN T_B.인증상태 = '12' THEN 'CRT02'
+         |             WHEN T_B.인증상태 = '8' OR T_B.인증상태 = '13' THEN 'CRT03'
+         |             ELSE 'CRT01'
+         |         END) CERT_STATUS_CD,
+         |        (SELECT 중분류코드명 FROM CM_COM_코드MASTER WHERE 대분류코드 = 'C050' AND 중분류코드 = T_B.인증구분코드) AS CERT_GB_NM,
+         |        T_B.최초인증일자 AS CERT_STRT_DT,
+         |        T_B.인증이미지 AS STD_CERT_IMG_PATH,
+         |        T_B.인증상세 AS REP_ITEM_NM
+         |  FROM (
+         |        SELECT
+         |              B.상품코드,
+         |              MAX(B."인증신청일련번호") AS 인증신청일련번호
+         |        FROM  CM_ITM_B2C상품정보 A,
+         |              CM_ITM_상품인증    B
+         |        WHERE A.상품코드 = B.상품코드
+         |          AND B.USE_YN = '1'
+         |        GROUP BY B.상품코드
+         |       ) T_A,
+         |        CM_MBR_인증정보 T_B
+         |  WHERE T_A.인증신청일련번호 = T_B.인증신청일련번호
+         |    AND T_B.USE_YN = '1'
+         |    AND T_B.인증번호 IS NOT NULL
+       """.stripMargin
+      .query[B2CItemCert]
+      .stream
+      .compile
+      .toList
+      .transact(DataBase.atDb)
+      .unsafeRunSync
+  }
+
+  /**
+    * 포스몰에 B2C상품인증 정보 INSERT
+    * @param items
+    * @return
+    */
+  def inertB2CItemCert(items: List[B2CItemCert]) = {
+    Update[B2CItemCert]("INSERT INTO B2C_ITEM_CERT VALUES(?, ?, ?, ?, ?, ?, ?, ?)", None)
+      .updateMany(items)
+      .transact(DataBase.posamllDb)
+      .unsafeRunSync
+  }
+
 
 
   /**
@@ -107,7 +161,7 @@ object MigrationMain {
     * 이미정보 조회
     * @return
     */
-  def getContentFile: List[ContentFile]  =
+  def getContentFile(containerCategory: String): List[ContentFile]  =
     sql"""
          |SELECT
          |      CONTAINER_ID,
@@ -116,7 +170,8 @@ object MigrationMain {
          |FROM  TB_CONTENT_FILE
          |WHERE USER_ID = 'b2c'
          |  AND FILE_DESCRIPTION LIKE 'http://www.eatmart.co.kr/UserFiles%'
-         |  AND CONTAINER_CATEGORY = 'GOODS_L'
+         |  AND CONTAINER_CATEGORY = $containerCategory
+            AND USER_ID = 'b2c'
        """.stripMargin.query[ContentFile]
       .stream
       .compile
@@ -129,11 +184,20 @@ object MigrationMain {
       inertB2CItem(getB2cItems(item))
     }*/
 
-    getContentFile.foreach(createThumbnail)
+    // 상품 이미지 정보 저장 처리
+    //getContentFile("GOODS_L").foreach(createThumbnail)
 
+    // B2C 인증정보 가져오기
+    //inertB2CItemCert(selectB2CItemCert)
+
+    // 인증서 이미지 정보 저장 처리
+    getContentFile("SELLERATTCH_CERT_DOC").foreach { file =>
+      // Download the contents of a URL to a file
+      // external system commands in Scala
+      new URL(file.fileDescription) #> new File(s"D:/B2C_IMAGE/${file.savePath}") !!
+
+    }
   }
-
-
 }
 
 
