@@ -30,7 +30,7 @@ object DataBase {
   )
 
   val posamllDb = Transactor.fromDriverManager[IO](
-    "com.tmax.tibero.jdbc.TbDriver", "jdbc:tibero:thin:@192.168.100.136:8629:tibero", "ATEAT", "atqwaszx12"
+    "com.tmax.tibero.jdbc.TbDriver", "jdbc:tibero:thin:@192.168.100.128:8629:tibero", "ATEAT", "atqwaszx12"
   )
 
   val posamllStats = Transactor.fromDriverManager[IO](
@@ -171,7 +171,6 @@ object MigrationMain {
          |WHERE USER_ID = 'b2c'
          |  AND FILE_DESCRIPTION LIKE 'http://www.eatmart.co.kr/UserFiles%'
          |  AND CONTAINER_CATEGORY = $containerCategory
-            AND USER_ID = 'b2c'
        """.stripMargin.query[ContentFile]
       .stream
       .compile
@@ -188,15 +187,14 @@ object MigrationMain {
     //getContentFile("GOODS_L").foreach(createThumbnail)
 
     // B2C 인증정보 가져오기
-    //inertB2CItemCert(selectB2CItemCert)
+    inertB2CItemCert(selectB2CItemCert)
 
     // 인증서 이미지 정보 저장 처리
-    getContentFile("SELLERATTCH_CERT_DOC").foreach { file =>
+    /*getContentFile("SELLERATTCH_CERT_DOC").foreach { file =>
       // Download the contents of a URL to a file
       // external system commands in Scala
       new URL(file.fileDescription) #> new File(s"D:/B2C_IMAGE/${file.savePath}") !!
-
-    }
+    }*/
   }
 }
 
